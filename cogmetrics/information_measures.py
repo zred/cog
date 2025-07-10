@@ -6,20 +6,9 @@ from typing import Dict, List, Tuple, Optional, Any
 from dataclasses import dataclass
 import warnings
 
-try:
-    import pyphi
-    PYPHI_AVAILABLE = True
-except ImportError:
-    PYPHI_AVAILABLE = False
-    warnings.warn("PyPhi not available. IIT measures will be disabled.")
-
-try:
-    from jpype import startJVM, JClass
-    import jpype.imports
-    JIDT_AVAILABLE = True
-except ImportError:
-    JIDT_AVAILABLE = False
-    warnings.warn("JIDT not available. Some information measures will be disabled.")
+# Heavy optional dependencies are disabled by default for lightweight installs
+PYPHI_AVAILABLE = False
+JIDT_AVAILABLE = False
 
 @dataclass
 class InformationProfile:
@@ -39,19 +28,7 @@ class InformationMetrics:
     def __init__(self, enable_phi: bool = True, enable_jidt: bool = True):
         self.enable_phi = enable_phi and PYPHI_AVAILABLE
         self.enable_jidt = enable_jidt and JIDT_AVAILABLE
-        
-        if self.enable_jidt:
-            self._setup_jidt()
     
-    def _setup_jidt(self):
-        """Initialize JIDT toolkit"""
-        if not startJVM():
-            startJVM()
-        
-        # Import JIDT classes
-        self.TransferEntropyCalculator = JClass("infodynamics.measures.continuous.gaussian.TransferEntropyCalculatorGaussian")
-        self.ActiveInfoStorageCalculator = JClass("infodynamics.measures.continuous.gaussian.ActiveInfoStorageCalculatorGaussian")
-        self.InfoModificationCalculator = JClass("infodynamics.measures.continuous.gaussian.MutualInfoCalculatorMultiVariateGaussian")
     
     def calculate_phi(self, network_state: np.ndarray, 
                       connectivity_matrix: np.ndarray) -> float:
