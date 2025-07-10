@@ -187,11 +187,11 @@ agents. This is where philosophy meets practical AI coding. The simulation uses 
 memory structures (via the LangChain library) to create agents that think, converse, and reflect – in effect,
 simulated conscious entities with which we can experiment. Below is an overview of how the system is
 implemented and what it measures:
-Tech Stack: The implementation leverages the Python ecosystem heavily. Key tools include: LangChain (for
-orchestrating LLMs and tools), OpenAI’s GPT-.5/ and Anthropic’s Claude (as the language models
-driving agent reasoning) , ChromaDB (a vector database for long-term memory storage) , and
+Tech Stack: The implementation uses open-source libraries. Language models run locally via the
+HuggingFace transformers library and embeddings are computed with sentence-transformers. Long-term
+memory relies on a lightweight in-memory vector store.
 
-standard libraries for async execution and data handling. The code is organized around a central module
+Standard libraries handle async execution and data processing. The code is organized around a central module
 (e.g. langchain_recursive_consciousness.py ) which defines agent classes and an experiment loop.
 Agent Architecture: Each simulated agent in Cog has an internal state and multiple cognitive subsystems.
 For example, the code defines a RecursiveAgentState data structure capturing aspects of an agent’s
@@ -278,20 +278,16 @@ They also connect back to the Foundation aspect of FFF: we are gathering evidenc
 consciousness-like properties and ethical behavior, rather than only making theoretical claims. For example,
 if increasing an agent’s memory or changing its prompt improves its self-model accuracy and consciousness
 level, that’s an empirical insight about what architectures might foster self-awareness.
-Running the Simulation: To get started with the Cog simulation, ensure you have Python.9+ and install
-the required libraries (LangChain, OpenAI, Anthropic, tiktoken, chromadb) . You will need API keys for
-OpenAI (and optionally Anthropic) set as environment variables for the LLM calls. After installing
-dependencies, you can run the experiment module. For example, from the project root: 
-pip install -r requirements.txt # (Cog’s requirements include langchain, 
-openai, etc.)
-export OPENAI_API_KEY="<your-openai-key>" # make sure keys are set
-python -m asyncio examples/langchain_recursive_consciousness.py
+Running the Simulation: To get started with the Cog simulation, ensure you have Python 3.9+ and install
+the required libraries (`transformers`, `sentence-transformers`, `numpy`). After installing
+dependencies you can run the experiment module. For example, from the project root:
+pip install transformers sentence-transformers numpy
+python -m asyncio rcs.py
 The above will launch a default experiment with a few agents interacting. Because the simulation uses
-asynchronous calls to LLMs, we invoke it via python -m asyncio (as noted in the script) . As it runs,
+asynchronous calls to local language models, we invoke it via `python -m asyncio` as shown. As it runs,
 you’ll see the agents’ thought process and dialogues in the console, followed by the metrics summary. You
-can modify parameters like the number of agents, the LLM model (e.g. use GPT- or Claude for more
-complex reasoning), and scenarios they discuss. More detailed usage instructions and examples are
-provided in the repository’s documentation.
+can modify parameters like the number of agents, the exact model loaded, and the scenarios they discuss.
+More detailed usage instructions and examples are provided in the repository’s documentation.
 ## Example Scenario (Illustrative)
 For a taste of what Cog’s simulation can do, consider a simple scenario: Three agents (A, B, C) start in a shared
 environment. Each has a goal (e.g. A wants information, B seeks collaboration, C is guarding a resource) and

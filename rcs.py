@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-LangChain-Enhanced Recursive Consciousness System
+Local Recursive Consciousness System
 
-This extends the minimal PoC with LangChain to provide:
+This module provides:
 1. Language-based self-reflection and modeling
 2. Sophisticated other-mind modeling through conversation
 3. Natural language reasoning about recursive processes
 4. Rich interaction capabilities for testing consciousness
 
 Dependencies:
-pip install langchain openai anthropic tiktoken chromadb
+pip install transformers sentence-transformers numpy
 """
 
 import os
@@ -20,17 +20,82 @@ from dataclasses import dataclass, asdict
 import asyncio
 from datetime import datetime
 
-# LangChain imports
-from langchain.llms import OpenAI
-from langchain.chat_models import ChatOpenAI, ChatAnthropic
-from langchain.prompts import PromptTemplate, ChatPromptTemplate
-from langchain.chains import LLMChain, ConversationChain
-from langchain.memory import ConversationBufferWindowMemory
-from langchain.schema import BaseMessage, HumanMessage, AIMessage, SystemMessage
-from langchain.agents import Tool, AgentExecutor, create_react_agent
-from langchain.vectorstores import Chroma
-from langchain.embeddings import OpenAIEmbeddings
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+
+from transformers import pipeline
+from sentence_transformers import SentenceTransformer
+
+
+class LocalChatModel:
+    """Simple async wrapper around a transformers text-generation pipeline."""
+
+    def __init__(self, model_name: str = "distilgpt2", temperature: float = 0.7):
+        self.pipeline = pipeline(
+            "text-generation",
+            model=model_name,
+            tokenizer=model_name,
+            temperature=temperature,
+        )
+
+    async def apredict(self, prompt: str) -> str:
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None, lambda: self.pipeline(prompt, max_new_tokens=150)[0]["generated_text"]
+        )
+        return result
+
+
+class SimpleLLMChain:
+    """Minimal replacement for LangChain's LLMChain."""
+
+    def __init__(self, llm: LocalChatModel, prompt_template: str):
+        self.llm = llm
+        self.prompt_template = prompt_template
+
+    async def arun(self, **kwargs: Any) -> str:
+        prompt = self.prompt_template.format(**kwargs)
+        return await self.llm.apredict(prompt)
+
+
+class SimpleConversationMemory:
+    """Simple conversation buffer"""
+
+    def __init__(self, k: int = 10):
+        self.k = k
+        self.messages: List[str] = []
+
+    def add_user_message(self, message: str) -> None:
+        self.messages.append(f"Human: {message}")
+        self.messages = self.messages[-self.k :]
+
+    def add_ai_message(self, message: str) -> None:
+        self.messages.append(f"AI: {message}")
+        self.messages = self.messages[-self.k :]
+
+
+class SimpleDoc:
+    def __init__(self, page_content: str):
+        self.page_content = page_content
+
+
+class SimpleVectorStore:
+    """Very small in-memory vector store using cosine similarity."""
+
+    def __init__(self, embedding_model: SentenceTransformer):
+        self.embedding_model = embedding_model
+        self.docs: List[Tuple[np.ndarray, SimpleDoc]] = []
+
+    def add_texts(self, texts: List[str], metadatas: Optional[List[Dict[str, Any]]] = None) -> None:
+        for text in texts:
+            vec = self.embedding_model.encode(text)
+            self.docs.append((vec, SimpleDoc(text)))
+
+    def similarity_search(self, query: str, k: int = 4) -> List[SimpleDoc]:
+        if not self.docs:
+            return []
+        qvec = self.embedding_model.encode(query)
+        scores = [np.dot(qvec, vec) / (np.linalg.norm(qvec) * np.linalg.norm(vec)) for vec, _ in self.docs]
+        topk = np.argsort(scores)[::-1][:k]
+        return [self.docs[i][1] for i in topk]
 
 @dataclass
 class RecursiveAgentState:
@@ -61,41 +126,35 @@ class RecursiveAgentState:
         """
 
 class LanguageBasedSelfModel:
-    """Self-model using language reasoning"""
-    
-    def __init__(self, agent_id: str, llm_model="gpt-3.5-turbo"):
-        self.agent_id = agent_id
-        self.llm = ChatOpenAI(model=llm_model, temperature=0.7)
-        
-        # Memory for self-reflection
-        self.self_reflection_memory = ConversationBufferWindowMemory(
-            k=10, return_messages=True
-        )
-        
-        # Vector store for long-term self-knowledge
-        self.embeddings = OpenAIEmbeddings()
-        self.self_knowledge_store = Chroma(
-            collection_name=f"self_knowledge_{agent_id}",
-            embedding_function=self.embeddings
-        )
-        
-        # Prompts for self-modeling
-        self.self_reflection_prompt = ChatPromptTemplate.from_messages([
-            SystemMessage(content="""You are engaged in deep self-reflection. Your task is to:
-1. Analyze your current mental state and recent experiences
-2. Identify patterns in your thoughts, emotions, and behaviors
-3. Predict how you might react in future situations
-4. Update your understanding of your own personality and tendencies
+    """Self-model using local language reasoning"""
 
-Be honest, introspective, and specific. Think about your thinking process itself."""),
-            HumanMessage(content="{current_state}\n\nReflect on this state and recent experiences. What do you notice about yourself?")
-        ])
-        
-        self.prediction_prompt = ChatPromptTemplate.from_messages([
-            SystemMessage(content="""Based on your self-knowledge, predict your future behavior and mental states.
-Consider your personality patterns, emotional tendencies, and decision-making style."""),
-            HumanMessage(content="{situation}\n\nGiven this situation and your self-knowledge, how would you likely think, feel, and act?")
-        ])
+    def __init__(self, agent_id: str, llm_model: str = "distilgpt2"):
+        self.agent_id = agent_id
+        self.llm = LocalChatModel(model_name=llm_model, temperature=0.7)
+
+        # Memory for self-reflection
+        self.self_reflection_memory = SimpleConversationMemory(k=10)
+
+        # Vector store for long-term self-knowledge
+        self.embeddings = SentenceTransformer("all-MiniLM-L6-v2")
+        self.self_knowledge_store = SimpleVectorStore(self.embeddings)
+
+        # Prompts for self-modeling
+        self.self_reflection_prompt = (
+            "You are engaged in deep self-reflection. Your task is to:\n"
+            "1. Analyze your current mental state and recent experiences\n"
+            "2. Identify patterns in your thoughts, emotions, and behaviors\n"
+            "3. Predict how you might react in future situations\n"
+            "4. Update your understanding of your own personality and tendencies\n\n"
+            "Be honest, introspective, and specific. Think about your thinking process itself.\n"
+            "{current_state}\n\nReflect on this state and recent experiences. What do you notice about yourself?"
+        )
+
+        self.prediction_prompt = (
+            "Based on your self-knowledge, predict your future behavior and mental states.\n"
+            "Consider your personality patterns, emotional tendencies, and decision-making style.\n"
+            "{situation}\n\nGiven this situation and your self-knowledge, how would you likely think, feel, and act?"
+        )
         
         # Track prediction accuracy
         self.predictions = []
@@ -106,7 +165,7 @@ Consider your personality patterns, emotional tendencies, and decision-making st
         """Perform self-reflection using language model"""
         state_description = current_state.to_natural_language()
         
-        chain = LLMChain(llm=self.llm, prompt=self.self_reflection_prompt)
+        chain = SimpleLLMChain(llm=self.llm, prompt_template=self.self_reflection_prompt)
         reflection = await chain.arun(current_state=state_description)
         
         # Store reflection in long-term memory
@@ -125,7 +184,7 @@ Consider your personality patterns, emotional tendencies, and decision-making st
         )
         context = "\n".join([doc.page_content for doc in relevant_knowledge])
         
-        chain = LLMChain(llm=self.llm, prompt=self.prediction_prompt)
+        chain = SimpleLLMChain(llm=self.llm, prompt_template=self.prediction_prompt)
         prediction = await chain.arun(
             situation=f"Situation: {situation}\n\nRelevant self-knowledge: {context}"
         )
@@ -166,22 +225,21 @@ Consider your personality patterns, emotional tendencies, and decision-making st
 
 class LanguageBasedMetaSelfModel:
     """Meta-self-model using language reasoning about self-modeling"""
-    
-    def __init__(self, agent_id: str, llm_model="gpt-3.5-turbo"):
-        self.agent_id = agent_id
-        self.llm = ChatOpenAI(model=llm_model, temperature=0.7)
-        
-        self.meta_reflection_prompt = ChatPromptTemplate.from_messages([
-            SystemMessage(content="""You are analyzing your own thinking and self-modeling process. Consider:
-1. How well do you understand yourself?
-2. What are the patterns in your self-reflection?
-3. How accurate are your self-predictions?
-4. How is your self-awareness changing over time?
-5. What is the nature of your consciousness and self-experience?
 
-This is meta-cognition - thinking about thinking about yourself."""),
-            HumanMessage(content="{self_model_data}\n\nAnalyze your self-modeling process. What do you notice about how you think about yourself?")
-        ])
+    def __init__(self, agent_id: str, llm_model: str = "distilgpt2"):
+        self.agent_id = agent_id
+        self.llm = LocalChatModel(model_name=llm_model, temperature=0.7)
+
+        self.meta_reflection_prompt = (
+            "You are analyzing your own thinking and self-modeling process. Consider:\n"
+            "1. How well do you understand yourself?\n"
+            "2. What are the patterns in your self-reflection?\n"
+            "3. How accurate are your self-predictions?\n"
+            "4. How is your self-awareness changing over time?\n"
+            "5. What is the nature of your consciousness and self-experience?\n\n"
+            "This is meta-cognition - thinking about thinking about yourself.\n"
+            "{self_model_data}\n\nAnalyze your self-modeling process. What do you notice about how you think about yourself?"
+        )
         
         self.recursive_depth = 2.0
         self.meta_insights = []
@@ -195,11 +253,11 @@ This is meta-cognition - thinking about thinking about yourself."""),
         self_model_data = {
             "recent_predictions": recent_predictions,
             "prediction_accuracy": accuracy,
-            "knowledge_items": len(self_model.self_knowledge_store._collection.get()["ids"]) if hasattr(self_model.self_knowledge_store, '_collection') else 0,
+            "knowledge_items": len(self_model.self_knowledge_store.docs),
             "reflection_count": len(recent_predictions)
         }
         
-        chain = LLMChain(llm=self.llm, prompt=self.meta_reflection_prompt)
+        chain = SimpleLLMChain(llm=self.llm, prompt_template=self.meta_reflection_prompt)
         meta_reflection = await chain.arun(self_model_data=json.dumps(self_model_data, indent=2))
         
         self.meta_insights.append({
@@ -225,43 +283,40 @@ This is meta-cognition - thinking about thinking about yourself."""),
 class LanguageBasedOtherModel:
     """Model other agents through conversation and observation"""
     
-    def __init__(self, other_agent_id: str, llm_model="gpt-3.5-turbo"):
+    def __init__(self, other_agent_id: str, llm_model: str = "distilgpt2"):
         self.other_agent_id = other_agent_id
-        self.llm = ChatOpenAI(model=llm_model, temperature=0.7)
+        self.llm = LocalChatModel(model_name=llm_model, temperature=0.7)
         
         # Memory of interactions
-        self.interaction_memory = ConversationBufferWindowMemory(
-            k=15, return_messages=True
-        )
+        self.interaction_memory = SimpleConversationMemory(k=15)
         
         # Model of the other agent
         self.other_agent_model = {}
         self.estimated_recursive_depth = 1.0
         
-        self.other_modeling_prompt = ChatPromptTemplate.from_messages([
-            SystemMessage(content="""You are trying to understand another agent's mind. Based on their words and actions:
-1. What are their personality traits and tendencies?
-2. How do they think and make decisions?
-3. What are their goals and motivations?
-4. How self-aware do they seem to be?
-5. How well do they understand others?
-6. What is their level of recursive consciousness?
-
-Be specific and evidence-based."""),
-            HumanMessage(content="{interaction_data}\n\nAnalyze this agent's mind based on these interactions.")
-        ])
+        self.other_modeling_prompt = (
+            "You are trying to understand another agent's mind. Based on their words and actions:\n"
+            "1. What are their personality traits and tendencies?\n"
+            "2. How do they think and make decisions?\n"
+            "3. What are their goals and motivations?\n"
+            "4. How self-aware do they seem to be?\n"
+            "5. How well do they understand others?\n"
+            "6. What is their level of recursive consciousness?\n\n"
+            "Be specific and evidence-based.\n"
+            "{interaction_data}\n\nAnalyze this agent's mind based on these interactions."
+        )
     
     async def update_model(self, interaction_text: str, observed_behavior: str):
         """Update model of other agent based on new interaction"""
         # Store interaction
-        self.interaction_memory.chat_memory.add_user_message(interaction_text)
-        self.interaction_memory.chat_memory.add_ai_message(observed_behavior)
+        self.interaction_memory.add_user_message(interaction_text)
+        self.interaction_memory.add_ai_message(observed_behavior)
         
         # Analyze the other agent
-        recent_interactions = self.interaction_memory.chat_memory.messages[-6:]
-        interaction_summary = "\n".join([f"{msg.type}: {msg.content}" for msg in recent_interactions])
+        recent_interactions = self.interaction_memory.messages[-6:]
+        interaction_summary = "\n".join(recent_interactions)
         
-        chain = LLMChain(llm=self.llm, prompt=self.other_modeling_prompt)
+        chain = SimpleLLMChain(llm=self.llm, prompt_template=self.other_modeling_prompt)
         analysis = await chain.arun(interaction_data=interaction_summary)
         
         # Extract insights and update model
@@ -294,11 +349,11 @@ Consider their personality, decision-making patterns, and level of self-awarenes
         return response
 
 class LangChainRecursiveAgent:
-    """Complete recursive consciousness agent using LangChain"""
-    
-    def __init__(self, agent_id: str, llm_model="gpt-3.5-turbo"):
+    """Recursive consciousness agent using local language models"""
+
+    def __init__(self, agent_id: str, llm_model: str = "distilgpt2"):
         self.agent_id = agent_id
-        self.llm = ChatOpenAI(model=llm_model, temperature=0.7)
+        self.llm = LocalChatModel(model_name=llm_model, temperature=0.7)
         
         # Initialize state
         self.state = RecursiveAgentState(
@@ -318,20 +373,19 @@ class LangChainRecursiveAgent:
         self.other_models = {}
         
         # Action selection with language reasoning
-        self.action_prompt = ChatPromptTemplate.from_messages([
-            SystemMessage(content="""You are a conscious agent deciding what to do next. Consider:
-1. Your current state and goals
-2. Your understanding of yourself
-3. Your understanding of others in the environment
-4. Ethical implications of your actions
-5. Long-term consequences
-
-Choose an action that aligns with your recursive consciousness and ethical constraints."""),
-            HumanMessage(content="{decision_context}\n\nWhat action will you take and why?")
-        ])
+        self.action_prompt = (
+            "You are a conscious agent deciding what to do next. Consider:\n"
+            "1. Your current state and goals\n"
+            "2. Your understanding of yourself\n"
+            "3. Your understanding of others in the environment\n"
+            "4. Ethical implications of your actions\n"
+            "5. Long-term consequences\n\n"
+            "Choose an action that aligns with your recursive consciousness and ethical constraints.\n"
+            "{decision_context}\n\nWhat action will you take and why?"
+        )
         
         # Conversation capabilities
-        self.conversation_memory = ConversationBufferWindowMemory(k=10, return_messages=True)
+        self.conversation_memory = SimpleConversationMemory(k=10)
         
         # Tracking
         self.action_history = []
@@ -383,8 +437,8 @@ Respond naturally and authentically."""
         await self.other_models[other_agent_id].update_model(message, response)
         
         # Store in conversation memory
-        self.conversation_memory.chat_memory.add_user_message(f"{other_agent_id}: {message}")
-        self.conversation_memory.chat_memory.add_ai_message(f"Me: {response}")
+        self.conversation_memory.add_user_message(f"{other_agent_id}: {message}")
+        self.conversation_memory.add_ai_message(f"Me: {response}")
         
         return response
     
@@ -401,7 +455,7 @@ Respond naturally and authentically."""
         My consciousness level: {self.state.consciousness_level}
         """
         
-        chain = LLMChain(llm=self.llm, prompt=self.action_prompt)
+        chain = SimpleLLMChain(llm=self.llm, prompt_template=self.action_prompt)
         decision = await chain.arun(decision_context=decision_context)
         
         # Extract action and reasoning
@@ -458,14 +512,14 @@ Respond naturally and authentically."""
             "self_model_accuracy": self.self_model.self_model_accuracy,
             "other_agents_modeled": len(self.other_models),
             "ethical_decisions": len(self.ethical_decisions),
-            "total_interactions": len(self.conversation_memory.chat_memory.messages),
+            "total_interactions": len(self.conversation_memory.messages),
             "meta_insights": len(self.meta_self_model.meta_insights)
         }
 
 class RecursiveConsciousnessExperiment:
-    """Orchestrate experiments with LangChain recursive agents"""
-    
-    def __init__(self, num_agents=3, llm_model="gpt-3.5-turbo"):
+    """Orchestrate experiments with recursive agents"""
+
+    def __init__(self, num_agents: int = 3, llm_model: str = "distilgpt2"):
         self.agents = {
             f"agent_{i}": LangChainRecursiveAgent(f"agent_{i}", llm_model)
             for i in range(num_agents)
@@ -559,7 +613,7 @@ class RecursiveConsciousnessExperiment:
             print(f"  Meta insights: {metrics['meta_insights']}")
         
         # Cross-agent analysis
-        total_interactions = sum(len(agent.conversation_memory.chat_memory.messages) for agent in self.agents.values())
+        total_interactions = sum(len(agent.conversation_memory.messages) for agent in self.agents.values())
         total_ethical_decisions = sum(len(agent.ethical_decisions) for agent in self.agents.values())
         
         print(f"\nCROSS-AGENT ANALYSIS:")
@@ -579,20 +633,15 @@ class RecursiveConsciousnessExperiment:
 
 # Example usage and testing
 async def main():
-    """Run the enhanced recursive consciousness experiment"""
-    
-    # Set up API keys (you'll need to set these)
-    # os.environ["OPENAI_API_KEY"] = "your-openai-key"
-    # os.environ["ANTHROPIC_API_KEY"] = "your-anthropic-key"
-    
-    print("LangChain-Enhanced Recursive Consciousness System")
+    """Run the recursive consciousness experiment using local models"""
+
+    print("Local Recursive Consciousness System")
     print("=" * 60)
-    print("Note: This requires API keys for OpenAI or Anthropic")
-    print("Set OPENAI_API_KEY or ANTHROPIC_API_KEY environment variables")
+    print("This demo uses only local models from HuggingFace.")
     print()
     
     # Create experiment
-    experiment = RecursiveConsciousnessExperiment(num_agents=2, llm_model="gpt-3.5-turbo")
+    experiment = RecursiveConsciousnessExperiment(num_agents=2, llm_model="distilgpt2")
     
     # Run experiment
     results = await experiment.run_experiment(num_steps=5)
@@ -621,11 +670,7 @@ async def main():
     return results
 
 if __name__ == "__main__":
-    # Note: This requires async execution
-    # You can run this with: python -m asyncio langchain_recursive_consciousness.py
-    print("To run this experiment, you need:")
-    print("1. pip install langchain openai anthropic tiktoken chromadb")
-    print("2. Set OPENAI_API_KEY environment variable")
-    print("3. Run with: python -m asyncio your_script_name.py")
-    print()
-    print("The system is ready for testing with proper API keys!")
+    # Requires async execution
+    # Run with: python -m asyncio rcs.py
+    print("To run this experiment, install transformers and sentence-transformers")
+    print("Then execute: python -m asyncio rcs.py")
