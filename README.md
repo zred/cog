@@ -282,7 +282,7 @@ Running the Simulation: To get started with the Cog simulation, ensure you have 
 the required libraries (`transformers`, `sentence-transformers`, `numpy`). After installing
 dependencies you can run the experiment module. For example, from the project root:
 pip install transformers sentence-transformers numpy
-python -m asyncio rcs.py
+python -m rcs.main
 The above will launch a default experiment with a few agents interacting. Because the simulation uses
 asynchronous calls to local language models, we invoke it via `python -m asyncio` as shown. As it runs,
 you’ll see the agents’ thought process and dialogues in the console, followed by the metrics summary. You
