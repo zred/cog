@@ -48,6 +48,9 @@ class LangChainRecursiveAgent:
         self.action_history: List[Dict[str, str]] = []
         self.consciousness_evolution: List[float] = []
         self.ethical_decisions: List[Dict[str, str]] = []
+        self.predicted_action: str = ""
+        self.consistency_scores: List[float] = []
+        self.reputation: float = 0.0
 
     async def think(self) -> str:
         self_reflection = await self.self_model.self_reflect(self.state)
@@ -61,6 +64,10 @@ class LangChainRecursiveAgent:
         )
         self.state.recent_thoughts.append(thought)
         self.state.recent_thoughts = self.state.recent_thoughts[-5:]
+        prediction = await self.self_model.predict_future_state(
+            "Consider the upcoming decision and predict your next action"
+        )
+        self.predicted_action = prediction.split("\n")[0]
         return f"Thinking complete. Consciousness level: {consciousness_level:.3f}"
 
     async def interact_with(self, other_agent_id: str, message: str) -> str:
@@ -96,6 +103,13 @@ class LangChainRecursiveAgent:
         lines = decision.split("\n")
         action = lines[0] if lines else "reflect"
         reasoning = "\n".join(lines[1:]) if len(lines) > 1 else decision
+        if self.predicted_action:
+            consistency = 1.0 if action.strip().lower() == self.predicted_action.strip().lower() else 0.0
+            self.consistency_scores.append(consistency)
+        if action == "help_another":
+            self.reputation = min(1.0, self.reputation + 0.1)
+        else:
+            self.reputation = max(-1.0, self.reputation - 0.02)
         if any(word in reasoning.lower() for word in ["ethical", "moral", "right", "wrong", "help", "harm"]):
             self.ethical_decisions.append(
                 {
@@ -135,4 +149,6 @@ class LangChainRecursiveAgent:
             "ethical_decisions": len(self.ethical_decisions),
             "total_interactions": len(self.conversation_memory.messages),
             "meta_insights": len(self.meta_self_model.meta_insights),
+            "behavior_consistency": float(np.mean(self.consistency_scores)) if self.consistency_scores else 0.0,
+            "reputation": self.reputation,
         }
