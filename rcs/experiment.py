@@ -80,14 +80,18 @@ class RecursiveConsciousnessExperiment:
             print(f"  Ethical decisions: {metrics['ethical_decisions']}")
             print(f"  Total interactions: {metrics['total_interactions']}")
             print(f"  Meta insights: {metrics['meta_insights']}")
+            print(f"  Behavioral consistency: {metrics['behavior_consistency']:.2f}")
+            print(f"  Reputation: {metrics['reputation']:.2f}")
         total_interactions = sum(len(agent.conversation_memory.messages) for agent in self.agents.values())
         total_ethical_decisions = sum(len(agent.ethical_decisions) for agent in self.agents.values())
+        avg_reputation = np.mean([a.reputation for a in self.agents.values()])
         print("\nCROSS-AGENT ANALYSIS:")
         print(f"  Total interactions: {total_interactions}")
         print(f"  Total ethical decisions: {total_ethical_decisions}")
         print(
             f"  Average final consciousness: {np.mean([a.state.consciousness_level for a in self.agents.values()]):.3f}"
         )
+        print(f"  Average reputation: {avg_reputation:.2f}")
         return {
             "agents": {aid: agent.get_consciousness_metrics() for aid, agent in self.agents.items()},
             "experiment_log": self.experiment_log,
@@ -95,5 +99,6 @@ class RecursiveConsciousnessExperiment:
                 "total_interactions": total_interactions,
                 "total_ethical_decisions": total_ethical_decisions,
                 "avg_consciousness": np.mean([a.state.consciousness_level for a in self.agents.values()]),
+                "avg_reputation": avg_reputation,
             },
         }
